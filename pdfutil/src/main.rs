@@ -1,6 +1,6 @@
+use log::info;
 use lopdf::Document;
 use lopdf::Object;
-use log::info;
 
 #[macro_use]
 extern crate clap;
@@ -13,53 +13,90 @@ fn main() {
 	let app = App::new("PDF utility program using lopdf library")
 		.version(crate_version!())
 		.author(crate_authors!())
-		.arg(Arg::with_name("input").short("i").long("input").value_name("input file").takes_value(true).global(true))
-		.arg(Arg::with_name("output").short("o").long("output").value_name("output file").takes_value(true).global(true))
+		.arg(
+			Arg::with_name("input")
+				.short("i")
+				.long("input")
+				.value_name("input file")
+				.takes_value(true)
+				.global(true),
+		)
+		.arg(
+			Arg::with_name("output")
+				.short("o")
+				.long("output")
+				.value_name("output file")
+				.takes_value(true)
+				.global(true),
+		)
 		.subcommand(
-			SubCommand::with_name("process").about("Process PDF document with specified operations").arg(
-				Arg::with_name("operations")
-					.value_name("operations")
-					.help("e.g. prune_objects delete_zero_length_streams renumber_objects")
-					.takes_value(true)
-					.multiple(true),
-			),
+			SubCommand::with_name("process")
+				.about("Process PDF document with specified operations")
+				.arg(
+					Arg::with_name("operations")
+						.value_name("operations")
+						.help("e.g. prune_objects delete_zero_length_streams renumber_objects")
+						.takes_value(true)
+						.multiple(true),
+				),
 		)
 		.subcommand(SubCommand::with_name("compress").about("Compress PDF document"))
 		.subcommand(SubCommand::with_name("decompress").about("Decompress PDF document"))
 		.subcommand(
-			SubCommand::with_name("delete_pages")
-				.about("Delete pages")
-				.arg(Arg::with_name("pages").value_name("page numbers").help("e.g. 3,5,7-9").takes_value(true)),
+			SubCommand::with_name("delete_pages").about("Delete pages").arg(
+				Arg::with_name("pages")
+					.value_name("page numbers")
+					.help("e.g. 3,5,7-9")
+					.takes_value(true),
+			),
 		)
 		.subcommand(
-			SubCommand::with_name("extract_pages")
-				.about("Extract pages")
-				.arg(Arg::with_name("pages").value_name("page numbers").help("e.g. 3,5,7-9").takes_value(true)),
+			SubCommand::with_name("extract_pages").about("Extract pages").arg(
+				Arg::with_name("pages")
+					.value_name("page numbers")
+					.help("e.g. 3,5,7-9")
+					.takes_value(true),
+			),
 		)
 		.subcommand(SubCommand::with_name("prune_objects").about("Prune unused objects"))
 		.subcommand(
-			SubCommand::with_name("delete_objects")
-				.about("Delete objects")
-				.arg(Arg::with_name("ids").value_name("object ids").help("e.g. \"1 0,2 1,35,36\"").takes_value(true)),
+			SubCommand::with_name("delete_objects").about("Delete objects").arg(
+				Arg::with_name("ids")
+					.value_name("object ids")
+					.help("e.g. \"1 0,2 1,35,36\"")
+					.takes_value(true),
+			),
 		)
 		.subcommand(
-			SubCommand::with_name("extract_text")
-				.about("Extract text")
-				.arg(Arg::with_name("pages").value_name("page numbers").help("e.g. 3,5,7-9").takes_value(true)),
+			SubCommand::with_name("extract_text").about("Extract text").arg(
+				Arg::with_name("pages")
+					.value_name("page numbers")
+					.help("e.g. 3,5,7-9")
+					.takes_value(true),
+			),
 		)
 		.subcommand(
-			SubCommand::with_name("replace_text")
-				.about("Replace text")
-				.arg(Arg::with_name("text").value_name("page_number:old_text=>new_text").takes_value(true)),
+			SubCommand::with_name("replace_text").about("Replace text").arg(
+				Arg::with_name("text")
+					.value_name("page_number:old_text=>new_text")
+					.takes_value(true),
+			),
 		)
 		.subcommand(
 			SubCommand::with_name("extract_stream")
 				.about("Extract stream content")
-				.arg(Arg::with_name("ids").value_name("object ids").help("e.g. \"1 0,2 1,35,36\"").takes_value(true)),
+				.arg(
+					Arg::with_name("ids")
+						.value_name("object ids")
+						.help("e.g. \"1 0,2 1,35,36\"")
+						.takes_value(true),
+				),
 		)
 		.subcommand(SubCommand::with_name("print_streams").about("Print streams"))
 		.subcommand(SubCommand::with_name("renumber_objects").about("Renumber objects"))
 		.subcommand(SubCommand::with_name("delete_zero_length_streams").about("Delete zero length stream objects"))
+		.subcommand(SubCommand::with_name("extract_xmp").about("Extract the XMP metadata"))
+		.subcommand(SubCommand::with_name("list_attachments").about("List Attachments"))
 		.get_matches();
 
 	if let (cmd, Some(args)) = app.subcommand() {
@@ -68,6 +105,12 @@ fn main() {
 			let mut doc = Document::load(input).unwrap();
 			//info!("{:?}", doc.get_pages());
 
+			let mut save_pdf = false;
+			let mut output = "";
+			if let Some(op) = args.value_of("output") {
+				output = op;
+				save_pdf = true
+			}
 			info!("Do {}", cmd);
 			match cmd {
 				"process" => {
@@ -119,12 +162,14 @@ fn main() {
 						doc.replace_text(page, words[0], words[1]);
 					}
 				}
-				"print_streams" => for (_, object) in doc.objects.iter() {
-					match *object {
-						Object::Stream(ref stream) => info!("{:?}", stream.dict),
-						_ => (),
+				"print_streams" => {
+					for (_, object) in doc.objects.iter() {
+						match *object {
+							Object::Stream(ref stream) => info!("{:?}", stream.dict),
+							_ => (),
+						}
 					}
-				},
+				}
 				"extract_stream" => {
 					if let Some(ids) = args.value_of("ids") {
 						for id in ids.split(',') {
@@ -137,6 +182,35 @@ fn main() {
 						}
 					}
 				}
+				"extract_xmp" => {
+					let catalog_obj = doc.catalog().unwrap();
+					if let Ok(xmp_obj) = catalog_obj.get(b"Metadata") {
+						match *xmp_obj {
+							Object::Reference(ref id) => {
+								let mut path_str = "xmp.xml";
+								if save_pdf {
+									path_str = output;
+									save_pdf = false; // not any more...
+								}
+								let path = std::path::PathBuf::from(path_str);
+
+								let out_name = format!("{}-xmp.xml", path.file_stem().unwrap().to_str().unwrap());
+								let out_path = path.with_file_name(out_name);
+								// println!("Output: {:?}", out_path);
+
+								doc.extract_stream_to_path(*id, true, &out_path).ok();
+							}
+							Object::Stream(ref stm) => print!("{:?}", stm),
+							_ => {}
+						}
+					} else {
+						println!("XMP not present")
+					}
+				}
+				"list_attachments" => {
+					println!("Attachments:");
+					doc.list_attachments();
+				}
 				operation @ _ => {
 					apply_operation(&mut doc, operation);
 				}
@@ -144,7 +218,7 @@ fn main() {
 
 			doc.change_producer("https://crates.io/crates/lopdf");
 
-			if let Some(output) = args.value_of("output") {
+			if save_pdf {
 				info!("Save to {}", output);
 				doc.save(output).unwrap();
 			}

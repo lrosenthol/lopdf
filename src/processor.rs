@@ -212,8 +212,10 @@ impl Document {
         Ok(())
     }
 
-    pub fn extract_stream(&self, stream_id: ObjectId, decompress: bool) -> Result<()> {
-        let mut file = File::create(format!("{:?}.bin", stream_id))?;
+    pub fn extract_stream_to_path(
+        &self, stream_id: ObjectId, decompress: bool, out_path: &std::path::PathBuf,
+    ) -> Result<()> {
+        let mut file = File::create(out_path)?;
         if let Ok(stream_obj) = self.get_object(stream_id) {
             if let Object::Stream(ref stream) = *stream_obj {
                 if decompress {
@@ -224,6 +226,50 @@ impl Document {
                     }
                 } else {
                     file.write_all(&stream.content)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn extract_stream(&self, stream_id: ObjectId, decompress: bool) -> Result<()> {
+        let out_path = std::path::PathBuf::from(format!("{:?}.bin", stream_id));
+        self.extract_stream_to_path(stream_id, decompress, &out_path)
+    }
+
+    pub fn list_attachments(&self) -> Result<()> {
+        let catalog_obj = self.catalog().unwrap();
+        if let Ok(names) = catalog_obj.get(b"Names") {
+            if let Some(names_dict) = match *names {
+                Object::Dictionary(ref dict) => Some(dict),
+                Object::Reference(ref id) => self.objects.get(id).and_then(|o| o.as_dict().ok()),
+                _ => None,
+            } {
+                if let Ok(ef) = names_dict.get(b"EmbeddedFiles") {
+                    if let Some(ef_dict) = match *ef {
+                        Object::Dictionary(ref dict) => Some(dict),
+                        Object::Reference(ref id) => self.objects.get(id).and_then(|o| o.as_dict().ok()),
+                        _ => None,
+                    } {
+                        if let Ok(names_tree) = ef_dict.get(b"Names") {
+                            if let Some(name_tree) = match *names_tree {
+                                Object::Array(ref arr) => Some(arr),
+                                Object::Reference(ref id) => self.objects.get(id).and_then(|o| o.as_array().ok()),
+                                _ => None,
+                            } {
+                                for item in name_tree.iter() {
+                                    match *item {
+                                        Object::Dictionary(ref _dict) => {}
+                                        Object::String(ref string, _) => {
+                                            println!("{}", String::from_utf8_lossy(string));
+                                        }
+                                        Object::Reference(ref _id) => {}
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
