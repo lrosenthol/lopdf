@@ -1,7 +1,8 @@
 use crate::Result;
-use crate::{Document, Object, ObjectId};
+use crate::{Document, Object, ObjectId, StringFormat};
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::io::Read;
 use std::io::Write;
 
 impl Document {
@@ -281,17 +282,72 @@ impl Document {
 
         let orig_catalog = self.catalog().unwrap();
         let mut catalog = orig_catalog.clone();
-        let names = match catalog.get(b"Names") {
+        let mut names = match catalog.get(b"Names") {
             Ok(n) => n.clone(),
             Err(_e) => {
                 let names_tree_id = self.new_object_id();
                 let names_id = self.add_object(dictionary! {
                     "EmbeddedFiles" => dictionary! {
-                        "Names" => names_tree_id,
+                            "Names" => names_tree_id,
                     },
                 });
                 self.objects.insert(names_tree_id, Object::Array(vec![]));
-                Object::Reference(names_id)
+                self.get_object(names_id)?.clone()
+            }
+        };
+
+        let mut ef_dict = match names.as_dict()?.get(b"EmbeddedFiles") {
+            Ok(ef) => ef.clone(),
+            Err(_e) => {
+                let names_tree_id = self.new_object_id();
+                let ef_id = self.add_object(dictionary! {
+                    "Names" => names_tree_id,
+                });
+                self.objects.insert(names_tree_id, Object::Array(vec![]));
+                names.as_dict_mut()?.set("EmbeddedFiles", Object::Reference(ef_id));
+                self.get_object(ef_id)?.clone()
+            }
+        };
+
+        if let Ok(names_tree) = ef_dict.as_dict()?.get(b"Names") {
+            if let Some(name_arr) = match *names_tree {
+                Object::Array(ref arr) => Some(arr),
+                Object::Reference(ref id) => self.objects.get(id).and_then(|o| o.as_array().ok()),
+                _ => None,
+            } {
+                let mut new_names = name_arr.clone();
+
+                let file_path = std::path::PathBuf::from(path_to_file);
+                let file_name = file_path.file_name().unwrap().to_str().unwrap();
+                new_names.push(Object::String(file_name.into(), StringFormat::Literal));
+
+                let mut buffer = Vec::new();
+                let mut f = File::open(file_path.clone())?;
+                f.read_to_end(&mut buffer)?;
+                let mut fs_obj = super::Stream::new(
+                    dictionary! {
+                        "DL" => Object::Integer(buffer.len() as i64),
+                        "Params" => dictionary!{
+                            "Size" => Object::Integer(buffer.len() as i64),
+                        },
+                    },
+                    buffer,
+                );
+                fs_obj.compress().unwrap();
+                let file_stream_id = self.add_object(fs_obj);
+                let ef_id = self.add_object(dictionary! {
+                    "F" => file_stream_id,
+                });
+
+                let filespec = self.add_object(dictionary! {
+                    "Type" => "Filespec",
+                    "F" => Object::String(file_name.into(), StringFormat::Literal),
+                    "EF" => ef_id,
+                });
+                new_names.push(Object::Reference(filespec));
+
+                ef_dict.as_dict_mut()?.set("Names", Object::Array(new_names));
+                names.as_dict_mut()?.set("EmbeddedFiles", ef_dict);
             }
         };
 
