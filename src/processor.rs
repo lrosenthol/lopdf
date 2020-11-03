@@ -275,4 +275,29 @@ impl Document {
         }
         Ok(())
     }
+
+    pub fn add_attachment(&mut self, path_to_file: &str) -> Result<()> {
+        println!("Adding '{}'", path_to_file);
+
+        let orig_catalog = self.catalog().unwrap();
+        let mut catalog = orig_catalog.clone();
+        let names = match catalog.get(b"Names") {
+            Ok(n) => n.clone(),
+            Err(_e) => {
+                let names_tree_id = self.new_object_id();
+                let names_id = self.add_object(dictionary! {
+                    "EmbeddedFiles" => dictionary! {
+                        "Names" => names_tree_id,
+                    },
+                });
+                self.objects.insert(names_tree_id, Object::Array(vec![]));
+                Object::Reference(names_id)
+            }
+        };
+
+        catalog.set("Names", names);
+        self.trailer.set("Root", catalog);
+
+        Ok(())
+    }
 }

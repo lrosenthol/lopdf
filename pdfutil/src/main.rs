@@ -97,6 +97,15 @@ fn main() {
 		.subcommand(SubCommand::with_name("delete_zero_length_streams").about("Delete zero length stream objects"))
 		.subcommand(SubCommand::with_name("extract_xmp").about("Extract the XMP metadata"))
 		.subcommand(SubCommand::with_name("list_attachments").about("List Attachments"))
+		.subcommand(
+			SubCommand::with_name("add_attachments")
+				.about("Embed files into a PDF")
+				.arg(
+					Arg::with_name("files")
+						.value_name("file1path,file2path")
+						.takes_value(true),
+				),
+		)
 		.get_matches();
 
 	if let (cmd, Some(args)) = app.subcommand() {
@@ -211,6 +220,14 @@ fn main() {
 					println!("Attachments:");
 					doc.list_attachments();
 				}
+				"add_attachments" => {
+					if let Some(files) = args.value_of("files") {
+						for a_file in files.split(',') {
+							doc.add_attachment(a_file);
+						}
+					}
+				}
+
 				operation @ _ => {
 					apply_operation(&mut doc, operation);
 				}
